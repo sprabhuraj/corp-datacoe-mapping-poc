@@ -1,0 +1,14 @@
+name: py_snowpark_jci_st
+channels:
+  - https://repo.anaconda.com/pkgs/snowflake
+  - nodefaults
+dependencies:
+  - python=3.9
+  - pip
+  - pip:
+    # Snowpark
+    - snowflake-snowpark-python[pandas]==1.5.0
+    # Basics
+    - pandas==1.5.3
+    - numpy==1.24.3
+    - streamlit
