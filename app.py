@@ -4,11 +4,13 @@ import numpy as np
 import json
 from snowflake.snowpark import Session
 
+st.set_page_config(page_title="JCI Business Data Uploader", page_icon=":rocket:", layout="wide")
+
 # connect to Snowflake
 with open('creds.json') as f:
     connection_parameters = json.load(f)  
 session = Session.builder.configs(connection_parameters).create()
-print(session)
+
 
 @st.cache_data
 def get_bu():
@@ -26,7 +28,7 @@ def get_bu():
         st.sidebar.error("Sorry, An error occcured in get_bu(): " + str(e))
 
 
-st.header("JCI Uploader :snowflake:")
+st.header("JCI Business Data Uploader :rocket: :snowflake:")
 
 
 bu_list_df = get_bu()
@@ -44,8 +46,10 @@ if bu is not None:
         try:
             
             
-            table_name = file.name.split('.csv')[0]
+            table_name = file.name.split('.csv')[0].upper()
             file_df = pd.read_csv(file)
+            
+            file_df.columns = map(lambda x: str(x).upper(), file_df.columns)
             
             #### ADD AUDIT COLUMNS ###
             
@@ -57,16 +61,15 @@ if bu is not None:
             user = session.sql('SELECT CURRENT_USER()').collect()[0][0]
             file_df['UPDATED_BY'] = user
             st.dataframe(file_df)
+            
             #st.write(file_df.columns)
             
             sql_ddl = pd.io.sql.get_schema(file_df, f'{table_name}').replace('CREATE ', 'CREATE OR REPLACE TRANSIENT ')
             sql_ddl2 = sql_ddl.replace('"ID" INTEGER', 'ID INTEGER DEFAULT MAPPING.DD_SEQ.NEXTVAL')\
                 .replace(f'TABLE "{table_name}"', f'TABLE {bu}.{table_name}')\
-                .replace(f')', f', CONSTRAINT PK PRIMARY KEY (ID))')
+                .replace(f')', f', CONSTRAINT PK PRIMARY KEY (ID))').upper()
             
-
             session.sql(sql_ddl2).collect()
-            
             
             snowparkDf=session.write_pandas(file_df,table_name,schema=bu) #, auto_create_table=False, overwrite=True, table_type='transient'
             st.subheader("Data has been uploaded to Snowflake")
@@ -76,5 +79,3 @@ if bu is not None:
 else:
     st.write("Please choose a Business")
     
-
-

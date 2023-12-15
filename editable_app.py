@@ -7,7 +7,7 @@ from snowflake.snowpark.functions import *
 import json
 
 
-st.set_page_config(page_title="JCI Mapping Editor", page_icon="📋", layout="wide")
+st.set_page_config(page_title="JCI Business Data Editor", page_icon="📋", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -57,7 +57,7 @@ def get_mapping_tables(bu):
 def get_table_to_edit(table_name):
     try:
         select_stmt = f"""
-        SELECT * EXCLUDE( LOAD_TS, UPDATED_BY)
+        SELECT * EXCLUDE(LOAD_TS, UPDATED_BY)
         FROM {table_name}
         """
         table_edit_df = session.sql(select_stmt).to_pandas()
@@ -113,7 +113,30 @@ def get_col_list_sql(table_name):
             ) || ')                               
                             ' || 'VALUES (' || LISTAGG('src.' || COLUMN_NAME, ', ') WITHIN GROUP (
                 ORDER BY ORDINAL_POSITION
-            ) || ')' COL_LIST_FOR_MERGE_INSERT
+            ) || ')' COL_LIST_FOR_MERGE_INSERT,
+            LISTAGG(
+                CASE 
+                    WHEN COLUMN_NAME = 'ID' THEN 'CASE 
+                        WHEN ID IS NULL 
+                        THEN 
+                            mapping.dd_seq.nextval 
+                        ELSE ID 
+                        END ID '
+                    WHEN COLUMN_NAME = 'LOAD_TS' THEN 'CASE 
+                        WHEN LOAD_TS IS NULL
+                        THEN 
+                            CURRENT_TIMESTAMP() 
+                        ELSE LOAD_TS 
+                        END LOAD_TS '
+                    WHEN COLUMN_NAME = 'UPDATED_BY' THEN 'CASE 
+                        WHEN UPDATED_BY IS NULL
+                        THEN
+                            CURRENT_USER()
+                        ELSE UPDATED_BY
+                        END UPDATED_BY'
+                    ELSE COLUMN_NAME
+                END,','
+            ) WITHIN GROUP (ORDER BY ORDINAL_POSITION) COL_LIST_FOR_USING
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_NAME = '{tbl}'
         AND TABLE_SCHEMA = '{sch}';
@@ -134,7 +157,7 @@ def get_col_list_sql(table_name):
 
 
 ##add some markdown to the page with a desc 
-st.header("JCI Mapping Editor 📋")
+st.header("JCI Business Data Editor 📋 :snowflake:")
 
 bu_list_df = get_bu()
 
@@ -169,19 +192,18 @@ if bu is not None:
             PK_COL = results.iloc[0]['column_name']
 
             df = get_table_to_edit(table)
+            
+            cols = [*df]
+            cols.remove('ID')
+            col_order_tuple = tuple(cols)
+            
             edited_df = st.data_editor(df
                                                     , key="data_editor"
                                                     , use_container_width=True
-                                                    , column_config = {
-                                                        "BRANCH_TYPE": st.column_config.SelectboxColumn(
-                                                            "Type",
-                                                            width="medium",
-                                                            options=["DIRECT",
-                                                                     "INDIRECT",
-                                                                     "NONE"]
-                                                        )
-                                                    }
                                                     , num_rows="dynamic"
+                                                    , hide_index=True
+                                                    , disabled=("ID", "ID")
+                                                    , column_order=col_order_tuple
                                                     )
             ######## DEBUGGING ###########
             #  remove the next two lines to see output of changed DF ###### 
@@ -198,12 +220,14 @@ if bu is not None:
             COL_SELECT_FOR_JSON = col_list_df.iloc[0]['COL_SELECT_FOR_JSON']
             COL_LIST_FOR_MERGE_UPDATE = col_list_df.iloc[0]['COL_LIST_FOR_MERGE_UPDATE']
             COL_LIST_FOR_MERGE_INSERT = col_list_df.iloc[0]['COL_LIST_FOR_MERGE_INSERT']
+            COL_LIST_FOR_USING = col_list_df.iloc[0]['COL_LIST_FOR_USING']
     
     
             #### DEBUGGING ##################
             # st.write(COL_SELECT_FOR_JSON)
             # st.write(COL_LIST_FOR_MERGE_UPDATE)
             # st.write(COL_LIST_FOR_MERGE_INSERT)
+            # st.write(COL_LIST_FOR_USING)
             # END DEBUGGING #############
     
             #create an empty dataframe to merge edits, inserts and delete DFs info 
@@ -339,31 +363,9 @@ if bu is not None:
                     MERGE_SQL = f"""
                     MERGE INTO {table} tgt 
                     USING (
-                      SELECT 
-                        CASE 
-                            WHEN ID IS NULL 
-                        THEN 
-                            mapping.dd_seq.nextval
-                        ELSE 
-                            ID 
-                        END ID
-                        , BRANCH_TYPE
-                        , CASE_OWNER_BRANCH
-                        , COMMENTS
-                        , DEL
-                        , CASE 
-                        WHEN LOAD_TS IS NULL
-                        THEN 
-                            CURRENT_TIMESTAMP() 
-                        ELSE LOAD_TS 
-                        END LOAD_TS
-                        , CASE 
-                        WHEN UPDATED_BY IS NULL
-                        THEN
-                            CURRENT_USER()
-                        ELSE UPDATED_BY
-                        END UPDATED_BY
-                          FROM STREAMLIT_MERGE_VW
+                        SELECT
+                            {COL_LIST_FOR_USING}, DEL
+                        FROM STREAMLIT_MERGE_VW
                     ) src 
                     ON tgt.{PK_COL}::INT = src.{PK_COL}::INT
                     WHEN MATCHED
@@ -378,12 +380,10 @@ if bu is not None:
                     
                     session.sql(MERGE_SQL).collect()
                     #drop the view
-                    #session.sql("DROP VIEW STREAMLIT_MERGE_VW").collect() 
+                    session.sql("DROP VIEW STREAMLIT_MERGE_VW").collect() 
                     
                     st.success ('Edited data successfully written back to Snowflake!') 
 
             
     except Exception as e:
         st.write(e)
-
-    
