@@ -7,7 +7,7 @@ from snowflake.snowpark.functions import *
 import json
 
 
-st.set_page_config(page_title="JCI Business Data Editor", page_icon="📋", layout="wide")
+st.set_page_config(page_title="JCI Mapping Editor", page_icon="📋", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -157,7 +157,7 @@ def get_col_list_sql(table_name):
 
 
 ##add some markdown to the page with a desc 
-st.header("JCI Business Data Editor 📋 :snowflake:")
+st.header("JCI Mapping Editor 📋")
 
 bu_list_df = get_bu()
 
@@ -256,7 +256,7 @@ if bu is not None:
                         
                         # DEBUGGING
                         # st.write(cols_to_merge)  
-                        # st.write(edit_df)
+                        st.dataframe(edit_df)
                       
                         #merge/join with orginal dataframe to get the column values that were changes 
                         edit_df = pd.merge(edit_df, df[cols_to_merge], left_on="ROW", right_index=True)
@@ -271,30 +271,36 @@ if bu is not None:
             
                         #### DEBUGGING ######
                         #st.write('edit dataframe:')
-                        #st.dataframe(edit_df)
+                        st.write("linde 274")
+                        st.dataframe(edit_df)
                         #######################
     
                     ############ INSERTS ###############
                     # handle added row logic and check if there are values in the added rows key
                     if key == "added_rows" and len(json_raw['added_rows']) > 0 :
-                        add_df_all= pd.DataFrame
+                        add_df_all= pd.DataFrame()
+                        st.write(json_raw['added_rows'])
                         for key in json_raw['added_rows']:
                             #st.write(key)
                             add_df = pd.DataFrame.from_dict(key, orient='index', columns=['VAL'])
                             add_df= add_df.T
-    
-                            #st.write(add_df)
+                            # st.write("line 285")
+                            # st.dataframe(add_df)
                             #rename columns so we get the column names from the orig DF based on the values  that chaged from those columns
                             
                             # for col in add_df.columns:
                             #     add_df.rename(columns={str(col): df.columns[int(col)-1]}, inplace=True)
             
                             add_df['DEL'] = 'N'
-                            add_df_all = pd.concat([add_df], ignore_index=True )
+                            add_df_all = add_df_all.append(add_df)
+                            # st.write("line 296")
+                            # st.dataframe(add_df_all)
+                            #add_df_all = pd.concat([add_df], ignore_index=True )
                             
                         #### DEBUGGING ##############
                         # st.write('insert dataframe:')
-                        # st.write(add_df_all)    
+                        # st.write("line 297")
+                        # st.dataframe(add_df_all)    
                         ##### END DEBUGGING          
                         
                         # append the insert DF to a single merged dataframe to use at end             
@@ -380,10 +386,12 @@ if bu is not None:
                     
                     session.sql(MERGE_SQL).collect()
                     #drop the view
-                    session.sql("DROP VIEW STREAMLIT_MERGE_VW").collect() 
+                    #session.sql("DROP VIEW STREAMLIT_MERGE_VW").collect() 
                     
                     st.success ('Edited data successfully written back to Snowflake!') 
 
             
     except Exception as e:
         st.write(e)
+
+    
